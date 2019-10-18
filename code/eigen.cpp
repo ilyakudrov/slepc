@@ -84,10 +84,10 @@ void dirac_mult(scomplex_t* res, const scomplex_t* src, int place, matrix* data_
 }*/
 
 int complex_place(link1& link){
-        return (link.coordinate[3] - 1) * 2 * link.lattice_size[0]*link.lattice_size[1]*link.lattice_size[2]
-                + (link.coordinate[2] - 1) * 2 * link.lattice_size[0]*link.lattice_size[1]
-                + (link.coordinate[1] - 1) * 2 * link.lattice_size[0]
-                + (link.coordinate[0] - 1) * 2;
+        return (link.coordinate[3]) * 2 * link.lattice_size[0]*link.lattice_size[1]*link.lattice_size[2]
+                + (link.coordinate[2]) * 2 * link.lattice_size[0]*link.lattice_size[1]
+                + (link.coordinate[1]) * 2 * link.lattice_size[0]
+                + (link.coordinate[0]) * 2;
 }
 
 void matrix_mult_complex1(matrix A, const scomplex_t* a, scomplex_t* a1, int i, double border_sign){
@@ -141,7 +141,7 @@ void test_eigenvector(const scomplex_t* eigenvector, scomplex_t eigenvalue, int 
 double eta_sign(int mu, link1& link){
         int n = 0;
         for(int i = 0;i < mu - 1;i++){
-                n += (link.coordinate[i] - 1);
+                n += (link.coordinate[i]);
         }
         if(n%2 == 1) return (double)(-1.);
         if(n%2 == 0) return (double)1.;
