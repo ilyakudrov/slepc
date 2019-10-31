@@ -25,16 +25,17 @@ static char help[] = "Solves the same eigenproblem as in example ex2, but using 
 */
 typedef struct {
    data conf;
-   /*int x_size;
+   int x_size;
    int y_size;
    int z_size;
-   int t_size;*/
+   int t_size;
    double mass;
    double mu_q;
 } mat_data;
 
 PetscErrorCode MatMult_Laplacian2D(Mat A,Vec x,Vec y);
 PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag);
+PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy);
 PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar* py);
 void CheckMatMult(mat_data& my_data);
 
@@ -50,14 +51,11 @@ int main(int argc,char **argv)
    //int z_size = 32/*atof(argv[3])*/;
    //int t_size = 32/*atof(argv[4])*/;
    mat_data my_data;
-   /*my_data.x_size = atof(argv[1]);
-   my_data.y_size = atof(argv[2]);
-   my_data.z_size = atof(argv[3]);
-   my_data.t_size = atof(argv[4]);*/
-   my_data.conf.read_float("/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.10/conf_0001.fl"/*argv[5]*/);
-   for(int i = 0;i < 10;i++){
-      cout<<"matrix "<<my_data.conf.array[i].a0<<endl;
-   }
+   my_data.x_size = x_size/*atof(argv[1])*/;
+   my_data.y_size = y_size/*atof(argv[2])*/;
+   my_data.z_size = z_size/*atof(argv[3])*/;
+   my_data.t_size = t_size/*atof(argv[4])*/;
+   my_data.conf.read_float("/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl"/*argv[5]*/);
    my_data.mass = 0.0075/*atof(argv[6])*/;
    my_data.mu_q = 0.1/*atof(argv[7])*/;
   Mat            A;               /* operator matrix */
@@ -67,6 +65,8 @@ int main(int argc,char **argv)
   PetscInt       N,n=x_size*y_size*z_size*t_size*2,nev;
   PetscBool      terse;
   PetscErrorCode ierr;
+
+  //long N;
 
    //CheckMatMult();
 
@@ -82,10 +82,10 @@ int main(int argc,char **argv)
        Create the operator matrix that defines the eigensystem, Ax=kx
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-  ierr = MatCreateShell(PETSC_COMM_WORLD,N,N,N,N,&my_data,&A);CHKERRQ(ierr);
+  ierr = MatCreateShell(PETSC_COMM_WORLD,n,n,PETSC_DETERMINE,PETSC_DETERMINE,&my_data,&A);CHKERRQ(ierr);
   ierr = MatShellSetOperation(A,MATOP_MULT,(void(*)(void))MatMult_Laplacian2D);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void(*)(void))MatMult_Laplacian2D);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_GET_DIAGONAL,(void(*)(void))MatGetDiagonal_Laplacian2D);CHKERRQ(ierr);
+  //ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void(*)(void))MatMult_Laplacian2D);CHKERRQ(ierr);
+  //ierr = MatShellSetOperation(A,MATOP_GET_DIAGONAL,(void(*)(void))MatGetDiagonal_Laplacian2D);CHKERRQ(ierr);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                 Create the eigensolver and set various options
@@ -100,7 +100,7 @@ int main(int argc,char **argv)
      Set operators. In this case, it is a standard eigenvalue problem
   */
   ierr = EPSSetOperators(eps,A,NULL);CHKERRQ(ierr);
-  ierr = EPSSetProblemType(eps,EPS_HEP);CHKERRQ(ierr);
+  ierr = EPSSetProblemType(eps,EPS_NHEP);CHKERRQ(ierr);
 
   /*
      Set solver parameters at runtime
@@ -108,8 +108,8 @@ int main(int argc,char **argv)
   ierr = EPSSetFromOptions(eps);CHKERRQ(ierr);
 
   //TESTING
-  CheckMatMult(my_data);
-  cout<<"check"<<endl;
+  //CheckMatMult(my_data);
+  //cout<<"check"<<endl;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                       Solve the eigensystem
@@ -138,6 +138,11 @@ int main(int argc,char **argv)
     ierr = EPSReasonView(eps,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     ierr = EPSErrorView(eps,EPS_ERROR_RELATIVE,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     ierr = PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+    PetscScalar eigr, eigi;
+    for(int i = 0;i < 2;i++){
+       EPSGetEigenpair(eps,i,&eigr,&eigi,NULL,NULL);
+       cout<<"eigenvalue "<<i<<" : "<<eigr<<" "<<eigi<<endl;
+    }
   }
   ierr = EPSDestroy(&eps);CHKERRQ(ierr);
   ierr = MatDestroy(&A);CHKERRQ(ierr);
@@ -205,10 +210,14 @@ PetscErrorCode MatMult_Laplacian2D(Mat A,Vec vecx,Vec vecy)
   ierr = MatShellGetContext(A,&ctx1);CHKERRQ(ierr);
   ierr = VecGetArrayRead(vecx,&px);CHKERRQ(ierr);
   ierr = VecGetArray(vecy,&py);CHKERRQ(ierr);
-
+   //cout<<"MatMult_Laplacian2D started"<<endl;
    mat_data *ctx = (mat_data*)ctx1;
-   int mass = ctx->mass;
-   int mu_q = ctx->mu_q;
+   double mass = ctx->mass;
+   double mu_q = ctx->mu_q;
+   x_size = ctx->x_size;
+   y_size = ctx->y_size;
+   z_size = ctx->z_size;
+   t_size = ctx->t_size;
    data conf = ctx->conf;
    double delta_4 = 0;
    double sign;
@@ -275,11 +284,7 @@ PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar*
    //mat_data *ctx = (mat_data*)ctx1;
    double mass = my_data.mass;
    double mu_q = my_data.mu_q;
-   cout<<"test matmul mu "<<mu_q<<endl;
    data conf = my_data.conf;
-   for(int i = 0;i < 10;i++){
-      cout<<"matrix "<<conf.array[i].a0<<endl;
-   }
    double delta_4 = 0;
    double sign;
    double border_sign;
@@ -288,7 +293,7 @@ PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar*
    PetscScalar res[2];
    link1 link(x_size, y_size, z_size, t_size);
    link1 link_ferm(x_size, y_size, z_size, t_size);
-   cout<<"ok matmul"<<endl;
+   cout<<"multtest started"<<endl;
    for(int x = 0;x < x_size;x++){
       //cout<<"x "<<x<<endl;
       for(int y = 0;y < y_size;y++){
@@ -306,10 +311,8 @@ PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar*
                   border_sign = link_ferm.border_sign(mu);
                   //if(place == 0) cout<<border_sign<<" "<<link_ferm.coordinate[3]<<endl;
                   link_ferm.move(mu, 1);
-                  if(mu == 4 && place == 0) cout<<exp(mu_q * delta_4)/2<<endl;
                   // matrix_mult_complex1(exp(mu_q * delta_4)/2 * sign * link.get_matrix1(data_conf), &src[complex_place(link_ferm)], &vec, src_index, border_sign);
                   MatVecMult(exp(mu_q * delta_4)/2 * sign * link.get_matrix(conf.array), &px[complex_place(link_ferm)], vec, border_sign);
-                  if(place == 0) cout<<"vec "<<vec[0]<<" "<<mu<<endl;
                   res[0] = res[0] + vec[0];
                   res[1] = res[1] + vec[1];
                   link.move_dir(-mu);
@@ -338,7 +341,6 @@ void CheckMatMult(mat_data& my_data){
    int y_size = 32;
    int z_size = 32;
    int t_size = 32;
-   cout<<"chaeck mu "<<my_data.mu_q<<endl;
    PetscErrorCode ierr;
    PetscInt place;
    PetscScalar a;
@@ -367,11 +369,33 @@ void CheckMatMult(mat_data& my_data){
       }
    }
    TestMatMul(my_data, vecx, vecy);
-   cout<<"ok TestMatMul"<<endl;
    for(int i = 0;i < 10;i++){
-      cout<<vecy[i]<<endl;
+      cout<<vecx[i]<<" "<<vecy[i]<<endl;
    }
    //PetscFunctionReturn(0);
+}
+
+PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy)
+{
+  void              *ctx1;
+  int               nx,lo,i,j;
+  int x_size, y_size, z_size, t_size;
+  const PetscScalar *px;
+  PetscScalar       *py;
+  PetscErrorCode    ierr;
+
+  PetscFunctionBeginUser;
+  ierr = MatShellGetContext(A,&ctx1);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(vecx,&px);CHKERRQ(ierr);
+  ierr = VecGetArray(vecy,&py);CHKERRQ(ierr);
+   //cout<<"MatMult_Laplacian2D started"<<endl;
+   for(int i = 0;i < 4;i++){
+      py[i] = px[i] * (i + (i + 1)*PETSC_i);
+   }
+
+  ierr = VecRestoreArrayRead(vecx,&px);CHKERRQ(ierr);
+  ierr = VecRestoreArray(vecy,&py);CHKERRQ(ierr);
+  PetscFunctionReturn(0);
 }
 
 PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag)
