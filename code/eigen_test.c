@@ -14,30 +14,31 @@ static char help[] = "Solves the same eigenproblem as in example ex2, but using 
   "  -n <n>, where <n> = number of grid subdivisions in both x and y dimensions.\n\n";
 
 #include <slepceps.h>
-#include <iostream>
-#include "data.h"
-#include "link.h"
-#include "matrix.h"
-#include "eigen.h"
+//#include <iostream>
+// #include "data.h"
+// #include "link.h"
+// #include "matrix.h"
+// #include "eigen.h"
 
 /*
    User-defined routines
 */
 typedef struct {
-   data conf;
+   // data conf;
    int x_size;
    int y_size;
    int z_size;
    int t_size;
    double mass;
    double mu_q;
+   int test_size;
 } mat_data;
 
-PetscErrorCode MatMult_Laplacian2D(Mat A,Vec x,Vec y);
-PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag);
+// PetscErrorCode MatMult_Laplacian2D(Mat A,Vec x,Vec y);
+// PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag);
 PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy);
-PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar* py);
-void CheckMatMult(mat_data& my_data);
+// PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar* py);
+// void CheckMatMult(mat_data& my_data);
 
 int x_size = 32;
 int y_size = 32;
@@ -55,24 +56,25 @@ int main(int argc,char **argv)
    my_data.y_size = y_size/*atof(argv[2])*/;
    my_data.z_size = z_size/*atof(argv[3])*/;
    my_data.t_size = t_size/*atof(argv[4])*/;
-   my_data.conf.read_float("/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl"/*argv[5]*/);
+   // my_data.conf.read_float("/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl"/*argv[5]*/);
    my_data.mass = 0.0075/*atof(argv[6])*/;
    my_data.mu_q = 0.1/*atof(argv[7])*/;
   Mat            A;               /* operator matrix */
   EPS            eps;             /* eigenproblem solver context */
   EPSType        type;
   PetscMPIInt    size;
-  PetscInt       N,n=x_size*y_size*z_size*t_size*2,nev;
+  PetscInt       N,n=10/*x_size*y_size*z_size*t_size*2*/,nev;
   PetscBool      terse;
   PetscErrorCode ierr;
 
-  //long N;
+  my_data.test_size = n;
 
    //CheckMatMult();
 
   ierr = SlepcInitialize(&argc,&argv,(char*)0,help);if (ierr) return ierr;
   ierr = MPI_Comm_size(PETSC_COMM_WORLD,&size);CHKERRQ(ierr);
-  if (size != 1) SETERRQ(PETSC_COMM_WORLD,1,"This is a uniprocessor example only");
+  ierr = PetscPrintf(PETSC_COMM_WORLD,"\nProblem with %D processors\n",size);CHKERRQ(ierr);
+  //if (size != 1) SETERRQ(PETSC_COMM_WORLD,1,"This is a uniprocessor example only");
 
   ierr = PetscOptionsGetInt(NULL,NULL,"-n",&n,NULL);CHKERRQ(ierr);
   N = n*n;
@@ -83,7 +85,7 @@ int main(int argc,char **argv)
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
   ierr = MatCreateShell(PETSC_COMM_WORLD,n,n,PETSC_DETERMINE,PETSC_DETERMINE,&my_data,&A);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT,(void(*)(void))MatMult_Laplacian2D);CHKERRQ(ierr);
+  ierr = MatShellSetOperation(A,MATOP_MULT,(void(*)(void))MatMult_simple);CHKERRQ(ierr);
   //ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void(*)(void))MatMult_Laplacian2D);CHKERRQ(ierr);
   //ierr = MatShellSetOperation(A,MATOP_GET_DIAGONAL,(void(*)(void))MatGetDiagonal_Laplacian2D);CHKERRQ(ierr);
 
@@ -101,6 +103,7 @@ int main(int argc,char **argv)
   */
   ierr = EPSSetOperators(eps,A,NULL);CHKERRQ(ierr);
   ierr = EPSSetProblemType(eps,EPS_NHEP);CHKERRQ(ierr);
+  ierr = EPSSetWhichEigenpairs(eps,EPS_SMALLEST_MAGNITUDE);CHKERRQ(ierr);
 
   /*
      Set solver parameters at runtime
@@ -139,10 +142,10 @@ int main(int argc,char **argv)
     ierr = EPSErrorView(eps,EPS_ERROR_RELATIVE,PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     ierr = PetscViewerPopFormat(PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
     PetscScalar eigr, eigi;
-    for(int i = 0;i < 2;i++){
+    /*for(int i = 0;i < 2;i++){
        EPSGetEigenpair(eps,i,&eigr,&eigi,NULL,NULL);
        cout<<"eigenvalue "<<i<<" : "<<eigr<<" "<<eigi<<endl;
-    }
+    }*/
   }
   ierr = EPSDestroy(&eps);CHKERRQ(ierr);
   ierr = MatDestroy(&A);CHKERRQ(ierr);
@@ -187,7 +190,7 @@ static void tv(int nx,const PetscScalar *x,PetscScalar *y)
     The subroutine TV is called to compute y<--T*x.
  */
 
-void MatVecMult(matrix A, const PetscScalar* x, PetscScalar* y, int border_sign){
+/*void MatVecMult(matrix A, const PetscScalar* x, PetscScalar* y, int border_sign){
    PetscScalar z1[2], z2[2];
    z1[0] = A.a0 + A.a3*PETSC_i;
    z2[0] = A.a2 + A.a1*PETSC_i;
@@ -370,15 +373,14 @@ void CheckMatMult(mat_data& my_data){
    }
    TestMatMul(my_data, vecx, vecy);
    for(int i = 0;i < 10;i++){
-      cout<<vecx[i]<<" "<<vecy[i]<<endl;
+      //cout<<vecx[i]<<" "<<vecy[i]<<endl;
    }
    //PetscFunctionReturn(0);
-}
+}*/
 
 PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy)
 {
   void              *ctx1;
-  int               nx,lo,i,j;
   int x_size, y_size, z_size, t_size;
   const PetscScalar *px;
   PetscScalar       *py;
@@ -388,10 +390,23 @@ PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy)
   ierr = MatShellGetContext(A,&ctx1);CHKERRQ(ierr);
   ierr = VecGetArrayRead(vecx,&px);CHKERRQ(ierr);
   ierr = VecGetArray(vecy,&py);CHKERRQ(ierr);
-   //cout<<"MatMult_Laplacian2D started"<<endl;
-   for(int i = 0;i < 4;i++){
+  mat_data *ctx = (mat_data*)ctx1;
+  int test_size = ctx->test_size;
+   /*for(int i = 0;i < test_size;i++){
       py[i] = px[i] * (i + (i + 1)*PETSC_i);
+   }*/
+
+   int rank, size;
+   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+   MPI_Comm_size(MPI_COMM_WORLD, &size);
+   //printf("it's %d rank\n", rank);
+
+   int i = rank;
+   while(i < test_size){
+      py[i] = px[i] * (i + (i + 1)*PETSC_i);
+      i += size;
    }
+   // MPI_BARRIER( MPI_COMM_WORLD );
 
   ierr = VecRestoreArrayRead(vecx,&px);CHKERRQ(ierr);
   ierr = VecRestoreArray(vecy,&py);CHKERRQ(ierr);
