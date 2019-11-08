@@ -8,37 +8,36 @@
    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 */
 
-static char help[] = "Solves the same eigenproblem as in example ex2, but using a shell matrix. "
+static char help[] = "Solves eigenproblem. "
   "The problem is a standard symmetric eigenproblem corresponding to the 2-D Laplacian operator.\n\n"
   "The command line options are:\n"
   "  -n <n>, where <n> = number of grid subdivisions in both x and y dimensions.\n\n";
 
 #include <slepceps.h>
-//#include <iostream>
-// #include "data.h"
-// #include "link.h"
-// #include "matrix.h"
-// #include "eigen.h"
+#include <iostream>
+#include "data.h"
+#include "link.h"
+#include "matrix.h"
+#include "eigen.h"
 
 /*
    User-defined routines
 */
 typedef struct {
-   // data conf;
+   data conf;
    int x_size;
    int y_size;
    int z_size;
    int t_size;
    double mass;
    double mu_q;
-   int test_size;
 } mat_data;
 
-// PetscErrorCode MatMult_Laplacian2D(Mat A,Vec x,Vec y);
-// PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag);
+PetscErrorCode MatMult_eigen_sequential(Mat A,Vec x,Vec y);
+PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag);
 PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy);
-// PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar* py);
-// void CheckMatMult(mat_data& my_data);
+PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar* py);
+void CheckMatMult(mat_data& my_data);
 
 int x_size = 32;
 int y_size = 32;
@@ -56,18 +55,16 @@ int main(int argc,char **argv)
    my_data.y_size = y_size/*atof(argv[2])*/;
    my_data.z_size = z_size/*atof(argv[3])*/;
    my_data.t_size = t_size/*atof(argv[4])*/;
-   // my_data.conf.read_float("/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl"/*argv[5]*/);
+   my_data.conf.read_float("/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl"/*argv[5]*/);
    my_data.mass = 0.0075/*atof(argv[6])*/;
-   my_data.mu_q = 0.1/*atof(argv[7])*/;
+   my_data.mu_q = 0/*atof(argv[7])*/;
   Mat            A;               /* operator matrix */
   EPS            eps;             /* eigenproblem solver context */
   EPSType        type;
   PetscMPIInt    size;
-  PetscInt       N,n=10/*x_size*y_size*z_size*t_size*2*/,nev;
+  PetscInt       N,n=x_size*y_size*z_size*t_size*2,nev;
   PetscBool      terse;
   PetscErrorCode ierr;
-
-  my_data.test_size = n;
 
    //CheckMatMult();
 
@@ -84,8 +81,8 @@ int main(int argc,char **argv)
        Create the operator matrix that defines the eigensystem, Ax=kx
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-  ierr = MatCreateShell(PETSC_COMM_WORLD,n,n,PETSC_DETERMINE,PETSC_DETERMINE,&my_data,&A);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT,(void(*)(void))MatMult_simple);CHKERRQ(ierr);
+  ierr = MatCreateShell(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,n,n,&my_data,&A);CHKERRQ(ierr);
+  ierr = MatShellSetOperation(A,MATOP_MULT,(void(*)(void))MatMult_eigen_sequential);CHKERRQ(ierr);
   //ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void(*)(void))MatMult_Laplacian2D);CHKERRQ(ierr);
   //ierr = MatShellSetOperation(A,MATOP_GET_DIAGONAL,(void(*)(void))MatGetDiagonal_Laplacian2D);CHKERRQ(ierr);
 
@@ -190,7 +187,7 @@ static void tv(int nx,const PetscScalar *x,PetscScalar *y)
     The subroutine TV is called to compute y<--T*x.
  */
 
-/*void MatVecMult(matrix A, const PetscScalar* x, PetscScalar* y, int border_sign){
+void MatVecMult(matrix A, const PetscScalar* x, PetscScalar* y, int border_sign){
    PetscScalar z1[2], z2[2];
    z1[0] = A.a0 + A.a3*PETSC_i;
    z2[0] = A.a2 + A.a1*PETSC_i;
@@ -200,9 +197,9 @@ static void tv(int nx,const PetscScalar *x,PetscScalar *y)
    y[1] = border_sign * (x[0] * z1[1] + x[1] * z2[1]);
 }
 
-PetscErrorCode MatMult_Laplacian2D(Mat A,Vec vecx,Vec vecy)
+PetscErrorCode MatMult_eigen_sequential(Mat A,Vec vecx,Vec vecy)
 {
-  void              *ctx1;
+  mat_data              *ctx;
   int               nx,lo,i,j;
   int x_size, y_size, z_size, t_size;
   const PetscScalar *px;
@@ -210,11 +207,22 @@ PetscErrorCode MatMult_Laplacian2D(Mat A,Vec vecx,Vec vecy)
   PetscErrorCode    ierr;
 
   PetscFunctionBeginUser;
-  ierr = MatShellGetContext(A,&ctx1);CHKERRQ(ierr);
+  ierr = MatShellGetContext(A,(void**) &ctx);CHKERRQ(ierr);
   ierr = VecGetArrayRead(vecx,&px);CHKERRQ(ierr);
   ierr = VecGetArray(vecy,&py);CHKERRQ(ierr);
    //cout<<"MatMult_Laplacian2D started"<<endl;
-   mat_data *ctx = (mat_data*)ctx1;
+
+   int rank;
+   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+   PetscInt local_size;
+   PetscInt low, high;
+   VecGetLocalSize(vecx, &local_size);
+   VecGetOwnershipRange(vecx, &low, &high);
+
+   PetscSynchronizedPrintf(PETSC_COMM_WORLD,"I'm the rank %d process; low is %d; high is %d\n",rank, low, high);
+   PetscSynchronizedFlush(PETSC_COMM_WORLD,PETSC_STDOUT);
+
    double mass = ctx->mass;
    double mu_q = ctx->mu_q;
    x_size = ctx->x_size;
@@ -296,7 +304,7 @@ PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar*
    PetscScalar res[2];
    link1 link(x_size, y_size, z_size, t_size);
    link1 link_ferm(x_size, y_size, z_size, t_size);
-   cout<<"multtest started"<<endl;
+   // cout<<"multtest started"<<endl;
    for(int x = 0;x < x_size;x++){
       //cout<<"x "<<x<<endl;
       for(int y = 0;y < y_size;y++){
@@ -376,37 +384,34 @@ void CheckMatMult(mat_data& my_data){
       //cout<<vecx[i]<<" "<<vecy[i]<<endl;
    }
    //PetscFunctionReturn(0);
-}*/
+}
 
 PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy)
 {
-  void              *ctx1;
+  mat_data              *ctx;
   int x_size, y_size, z_size, t_size;
   const PetscScalar *px;
   PetscScalar       *py;
   PetscErrorCode    ierr;
 
   PetscFunctionBeginUser;
-  ierr = MatShellGetContext(A,&ctx1);CHKERRQ(ierr);
+  ierr = MatShellGetContext(A,(void**) &ctx);CHKERRQ(ierr);
   ierr = VecGetArrayRead(vecx,&px);CHKERRQ(ierr);
   ierr = VecGetArray(vecy,&py);CHKERRQ(ierr);
-  mat_data *ctx = (mat_data*)ctx1;
-  int test_size = ctx->test_size;
-   /*for(int i = 0;i < test_size;i++){
-      py[i] = px[i] * (i + (i + 1)*PETSC_i);
-   }*/
 
-   int rank, size;
+   int rank;
    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-   MPI_Comm_size(MPI_COMM_WORLD, &size);
-   //printf("it's %d rank\n", rank);
 
-   int i = rank;
-   while(i < test_size){
-      py[i] = px[i] * (i + (i + 1)*PETSC_i);
-      i += size;
+   PetscInt local_size;
+   PetscInt low, high;
+   VecGetLocalSize(vecx, &local_size);
+   VecGetOwnershipRange(vecx, &low, &high);
+
+   //PetscSynchronizedPrintf(PETSC_COMM_WORLD,"I'm the rank %d process; low is %d; high is %d\n",rank, low, high);
+   // PetscSynchronizedFlush(PETSC_COMM_WORLD,PETSC_STDOUT);
+   for(int i = 0;i < local_size;i++){
+      py[i] = px[i] * (low + i + (low + i + 1)*PETSC_i);
    }
-   // MPI_BARRIER( MPI_COMM_WORLD );
 
   ierr = VecRestoreArrayRead(vecx,&px);CHKERRQ(ierr);
   ierr = VecRestoreArray(vecy,&py);CHKERRQ(ierr);
