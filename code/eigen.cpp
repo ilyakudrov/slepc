@@ -1,10 +1,10 @@
 #include "eigen.h"
 
 void dirac_mult(scomplex_t* res, const scomplex_t* src, int place, matrix* data_conf, int x_size, int y_size, int z_size, int t_size, double mass, double mu_q){
-        int t = place/(x_size * y_size * z_size*2) + 1;
-        int z = (place - (x_size * y_size * z_size*2)*(t - 1))/(x_size * y_size*2) + 1;
-        int y = (place - (x_size * y_size * z_size*2)*(t - 1) - (2*x_size * y_size)*(z - 1))/(x_size*2) + 1;
-        int x = (place - (x_size * y_size * z_size*2)*(t - 1) - (2*x_size * y_size)*(z - 1) - 2*x_size*(y - 1))/2 + 1;
+        int t = place/(x_size * y_size * z_size*2);
+        int z = (place - (x_size * y_size * z_size*2)*t)/(x_size * y_size*2);
+        int y = (place - (x_size * y_size * z_size*2)*t - (2*x_size * y_size)*z)/(x_size*2);
+        int x = (place - (x_size * y_size * z_size*2)*t - (2*x_size * y_size)*z - 2*x_size*y)/2;
         int src_index = place - ((t - 1) * 2 * x_size * y_size * z_size
                 + (z - 1) * 2 * x_size * y_size
                 + (y - 1) * 2 * x_size

@@ -113,10 +113,10 @@ PetscErrorCode MatMult_test_parallel(const Vec vecx,Vec vecy, const mat_data ctx
     // PetscSynchronizedFlush(PETSC_COMM_WORLD,PETSC_STDOUT);
     for(int i = 0;i < local_size/2;i++){
         int place = low + i * 2;
-        int t = place/(x_size * y_size * z_size*2) + 1;
-        int z = (place - (x_size * y_size * z_size*2)*(t - 1))/(x_size * y_size*2) + 1;
-        int y = (place - (x_size * y_size * z_size*2)*(t - 1) - (2*x_size * y_size)*(z - 1))/(x_size*2) + 1;
-        int x = (place - (x_size * y_size * z_size*2)*(t - 1) - (2*x_size * y_size)*(z - 1) - 2*x_size*(y - 1))/2 + 1;
+        int t = place/(x_size * y_size * z_size*2);
+        int z = (place - (x_size * y_size * z_size*2)*t)/(x_size * y_size*2);
+        int y = (place - (x_size * y_size * z_size*2)*t - (2*x_size * y_size)*z)/(x_size*2);
+        int x = (place - (x_size * y_size * z_size*2)*t - (2*x_size * y_size)*z - 2*x_size*y)/2;
 
         link.go(x, y, z, t);
         link_ferm.go(x, y, z, t);

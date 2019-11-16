@@ -18,7 +18,7 @@ PetscErrorCode create_test_vec(Vec vecx);
 
 int main(int argc,char **argv){
     data conf;
-    conf.read_float("/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.10/conf_0001.fl");
+    conf.read_float("/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl");
     double mass = 0.0075;
     double mu_q = 0.1;
     Mat A;

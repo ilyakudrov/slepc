@@ -33,6 +33,8 @@ typedef struct {
    double mu_q;
 } mat_data;
 
+void mat_set_index(PetscInt* d_nnz, PetscInt* o_nnz, int low, int high);
+void mat_insert(Mat A, int low, int high, data& conf, double mu_q, double mass);
 PetscErrorCode MatMult_eigen_sequential(Mat A,Vec x,Vec y);
 PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag);
 PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy);
@@ -55,9 +57,9 @@ int main(int argc,char **argv)
    my_data.y_size = y_size/*atof(argv[2])*/;
    my_data.z_size = z_size/*atof(argv[3])*/;
    my_data.t_size = t_size/*atof(argv[4])*/;
-   my_data.conf.read_float("/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl"/*argv[5]*/);
+   my_data.conf.read_float(/*"/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl"*/argv[1]);
    my_data.mass = 0.0075/*atof(argv[6])*/;
-   my_data.mu_q = 0/*atof(argv[7])*/;
+   my_data.mu_q = atof(argv[2]);
   Mat            A;               /* operator matrix */
   EPS            eps;             /* eigenproblem solver context */
   EPSType        type;
@@ -81,10 +83,48 @@ int main(int argc,char **argv)
        Create the operator matrix that defines the eigensystem, Ax=kx
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
-  ierr = MatCreateShell(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,n,n,&my_data,&A);CHKERRQ(ierr);
-  ierr = MatShellSetOperation(A,MATOP_MULT,(void(*)(void))MatMult_eigen_sequential);CHKERRQ(ierr);
+//   ierr = MatCreateShell(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,n,n,&my_data,&A);CHKERRQ(ierr);
+//   ierr = MatShellSetOperation(A,MATOP_MULT,(void(*)(void))MatMult_eigen_sequential);CHKERRQ(ierr);
   //ierr = MatShellSetOperation(A,MATOP_MULT_TRANSPOSE,(void(*)(void))MatMult_Laplacian2D);CHKERRQ(ierr);
   //ierr = MatShellSetOperation(A,MATOP_GET_DIAGONAL,(void(*)(void))MatGetDiagonal_Laplacian2D);CHKERRQ(ierr);
+
+   int rank, mpi_size;
+   MPI_Comm_size(PETSC_COMM_WORLD, &mpi_size);
+   MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+   PetscInt vec_size = x_size*y_size*z_size*t_size*2;
+   PetscInt vec_size_local;
+   if(mpi_size == 1) vec_size_local = vec_size;
+   else if(rank != mpi_size - 1) vec_size_local = vec_size/mpi_size/2*2;
+   else if(rank == mpi_size - 1) vec_size_local = vec_size - vec_size/mpi_size/2*2*(mpi_size - 1);
+   int low, high;
+   if(rank != mpi_size - 1){
+       low = rank * vec_size_local;
+       high = low + vec_size_local;
+   }
+   if(rank == mpi_size - 1){
+       low = vec_size - vec_size_local;
+       high = vec_size;
+   }
+   MatCreate(PETSC_COMM_WORLD, &A);
+   MatSetType(A, MATMPIAIJ);
+   MatSetSizes(A, vec_size_local, vec_size_local, vec_size, vec_size);
+   PetscInt* d_nnz;
+   PetscInt* o_nnz;
+   if(!(d_nnz = (PetscInt*) malloc(vec_size_local * sizeof(PetscInt)))) PetscPrintf(PETSC_COMM_WORLD, "err malloc d_nnz");
+   if(!(o_nnz = (PetscInt*) malloc(vec_size_local * sizeof(PetscInt)))) PetscPrintf(PETSC_COMM_WORLD, "err malloc o_nnz");
+   for(int i = 0;i < vec_size_local;i++){
+       d_nnz[i] = 0;
+       o_nnz[i] = 0;
+   }
+   mat_set_index(d_nnz, o_nnz, low, high);
+   MatMPIAIJSetPreallocation(A, PETSC_DECIDE, d_nnz, PETSC_DECIDE, o_nnz);
+   MatSetOption(A,MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_TRUE);
+   mat_insert(A, low, high, my_data.conf, my_data.mu_q, my_data.mass);
+   MatAssemblyBegin(A, MAT_FINAL_ASSEMBLY);
+   MatAssemblyEnd(A, MAT_FINAL_ASSEMBLY);
+
+   free(d_nnz);
+   free(o_nnz);
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                 Create the eigensolver and set various options
@@ -108,13 +148,13 @@ int main(int argc,char **argv)
   ierr = EPSSetFromOptions(eps);CHKERRQ(ierr);
 
   //TESTING
-  //CheckMatMult(my_data);
-  //cout<<"check"<<endl;
+//   CheckMatMult(my_data);
+//   cout<<"check"<<endl;
 
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                       Solve the eigensystem
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-
+   cout<<"rank is "<<rank<<"; starting to solve"<<endl;
   ierr = EPSSolve(eps);CHKERRQ(ierr);
 
   /*
@@ -187,14 +227,95 @@ static void tv(int nx,const PetscScalar *x,PetscScalar *y)
     The subroutine TV is called to compute y<--T*x.
  */
 
+void mat_set_index(PetscInt* d_nnz, PetscInt* o_nnz, int low, int high){
+    int x, y, z, t;
+    link1 link_ferm(x_size, y_size, z_size, t_size);
+    for(int place = low;place < high;place+=2){
+        int t = place/(x_size * y_size * z_size*2);
+        int z = (place - (x_size * y_size * z_size*2)*t)/(x_size * y_size*2);
+        int y = (place - (x_size * y_size * z_size*2)*t - (2*x_size * y_size)*z)/(x_size*2);
+        int x = (place - (x_size * y_size * z_size*2)*t - (2*x_size * y_size)*z - 2*x_size*y)/2;
+        d_nnz[place - low]+=1;
+        d_nnz[place - low + 1]+=1;
+
+        link_ferm.go(x, y, z ,t);
+        for(int mu = 1;mu <= 4;mu++){
+            link_ferm.move(mu, 1);
+            if(low <= complex_place(link_ferm) && complex_place(link_ferm) < high){
+                d_nnz[place - low]+=2;
+                d_nnz[place - low + 1]+=2;
+            }
+            if(low > complex_place(link_ferm) || complex_place(link_ferm) >= high){
+                o_nnz[place - low]+=2;
+                o_nnz[place - low + 1]+=2;
+            }
+            link_ferm.move(mu, -2);
+            if(low <= complex_place(link_ferm) && complex_place(link_ferm) < high){
+                d_nnz[place - low]+=2;
+                d_nnz[place - low + 1]+=2;
+            }
+            if(low > complex_place(link_ferm) || complex_place(link_ferm) >= high){
+                o_nnz[place - low]+=2;
+                o_nnz[place - low + 1]+=2;
+            }
+            link_ferm.move(mu, 1);
+        }
+    }
+}
+
+void mat_insert(Mat A, int low, int high, data& conf, double mu_q, double mass){
+    int rank, mpi_size;
+    MPI_Comm_size(PETSC_COMM_WORLD, &mpi_size);
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+
+    int x, y, z, t;
+    link1 link(x_size, y_size, z_size, t_size);
+    link1 link_ferm(x_size, y_size, z_size, t_size);
+    double delta_4 = 0;
+    double sign;
+    double border_sign;
+    matrix B;
+    cout<<"rank is "<<rank<<"; "<<low<<" "<<high<<endl;
+    for(int place = low;place < high;place+=2){
+        int t = place/(x_size * y_size * z_size*2);
+        int z = (place - (x_size * y_size * z_size*2)*t)/(x_size * y_size*2);
+        int y = (place - (x_size * y_size * z_size*2)*t - (2*x_size * y_size)*z)/(x_size*2);
+        int x = (place - (x_size * y_size * z_size*2)*t - (2*x_size * y_size)*z - 2*x_size*y)/2;
+
+        MatSetValue(A, place, place, mass, INSERT_VALUES);
+        MatSetValue(A, place + 1, place + 1, mass, INSERT_VALUES);
+
+        link_ferm.go(x, y, z ,t);
+        link.go(x, y, z, t);
+        for(int mu = 1;mu <= 4;mu++){
+            if(mu == 4) delta_4 = 1;
+            else delta_4 = 0;
+            sign = eta_sign(mu, link_ferm);
+            border_sign = link_ferm.border_sign(mu);
+            link_ferm.move(mu, 1);
+            link.move_dir(mu);
+            B = link.get_matrix(conf.array);
+            MatSetValue(A, place, complex_place(link_ferm), exp(mu_q * delta_4)/2 * border_sign * sign * (B.a0 + B.a3*PETSC_i), INSERT_VALUES);
+            MatSetValue(A, place, complex_place(link_ferm) + 1, exp(mu_q * delta_4)/2 * border_sign * sign * (B.a2 + B.a1*PETSC_i), INSERT_VALUES);
+            MatSetValue(A, place + 1, complex_place(link_ferm), exp(mu_q * delta_4)/2 * border_sign * sign * (-B.a2 + B.a1*PETSC_i), INSERT_VALUES);
+            MatSetValue(A, place + 1, complex_place(link_ferm) + 1, exp(mu_q * delta_4)/2 * border_sign * sign * (B.a0 - B.a3*PETSC_i), INSERT_VALUES);
+            link.move_dir(-mu);
+            link_ferm.move(-mu, 1);
+            border_sign = link_ferm.border_sign(-mu);
+            link_ferm.move(-mu, 1);
+            B = link.get_matrix(conf.array);
+            MatSetValue(A, place, complex_place(link_ferm), -exp(-mu_q * delta_4)/2 * border_sign * sign * (B.a0 + B.a3*PETSC_i), INSERT_VALUES);
+            MatSetValue(A, place, complex_place(link_ferm) + 1, -exp(-mu_q * delta_4)/2 * border_sign * sign * (B.a2 + B.a1*PETSC_i), INSERT_VALUES);
+            MatSetValue(A, place + 1, complex_place(link_ferm), -exp(-mu_q * delta_4)/2 * border_sign * sign * (-B.a2 + B.a1*PETSC_i), INSERT_VALUES);
+            MatSetValue(A, place + 1, complex_place(link_ferm) + 1, -exp(-mu_q * delta_4)/2 * border_sign * sign * (B.a0 - B.a3*PETSC_i), INSERT_VALUES);
+            link_ferm.move(mu, 1);
+        }
+    }
+}
+
 void MatVecMult(matrix A, const PetscScalar* x, PetscScalar* y, int border_sign){
-   PetscScalar z1[2], z2[2];
-   z1[0] = A.a0 + A.a3*PETSC_i;
-   z2[0] = A.a2 + A.a1*PETSC_i;
-   z1[1] = -A.a2 + A.a1*PETSC_i;
-   z2[1] = A.a0 - A.a3*PETSC_i;
-   y[0] = border_sign * (x[0] * z1[0] + x[1] * z2[0]);
-   y[1] = border_sign * (x[0] * z1[1] + x[1] * z2[1]);
+   y[0] = border_sign * (x[0] * (A.a0 + A.a3*PETSC_i) + x[1] * (A.a2 + A.a1*PETSC_i));
+   y[1] = border_sign * (x[0] * (-A.a2 + A.a1*PETSC_i) + x[1] * (A.a0 - A.a3*PETSC_i));
 }
 
 PetscErrorCode MatMult_eigen_sequential(Mat A,Vec vecx,Vec vecy)
@@ -284,15 +405,9 @@ PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar*
    int y_size = 32;
    int z_size = 32;
    int t_size = 32;
-   //void *ctx1;
    int nx,lo,i,j;
-   //int x_size, y_size, z_size, t_size;
-   //const PetscScalar *px;
-   //PetscScalar *py;
    PetscErrorCode ierr;
 
-   //ierr = MatShellGetContext(A,&ctx1);CHKERRQ(ierr);
-   //mat_data *ctx = (mat_data*)ctx1;
    double mass = my_data.mass;
    double mu_q = my_data.mu_q;
    data conf = my_data.conf;
@@ -304,13 +419,10 @@ PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar*
    PetscScalar res[2];
    link1 link(x_size, y_size, z_size, t_size);
    link1 link_ferm(x_size, y_size, z_size, t_size);
-   // cout<<"multtest started"<<endl;
    for(int x = 0;x < x_size;x++){
-      //cout<<"x "<<x<<endl;
       for(int y = 0;y < y_size;y++){
          for(int z = 0;z < z_size;z++){
             for(int t = 0;t < t_size;t++){
-               //cout<<"t "<<t<<endl;
                link.go(x, y, z, t);
                link_ferm.go(x, y, z, t);
                place = complex_place(link_ferm);
@@ -320,9 +432,7 @@ PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar*
                   link.move_dir(mu);
                   sign = eta_sign(mu, link_ferm);
                   border_sign = link_ferm.border_sign(mu);
-                  //if(place == 0) cout<<border_sign<<" "<<link_ferm.coordinate[3]<<endl;
                   link_ferm.move(mu, 1);
-                  // matrix_mult_complex1(exp(mu_q * delta_4)/2 * sign * link.get_matrix1(data_conf), &src[complex_place(link_ferm)], &vec, src_index, border_sign);
                   MatVecMult(exp(mu_q * delta_4)/2 * sign * link.get_matrix(conf.array), &px[complex_place(link_ferm)], vec, border_sign);
                   res[0] = res[0] + vec[0];
                   res[1] = res[1] + vec[1];
@@ -330,7 +440,6 @@ PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar*
                   link_ferm.move(-mu, 1);
                   border_sign = link_ferm.border_sign(-mu);
                   link_ferm.move(-mu, 1);
-                  // matrix_mult_complex1(exp(-mu_q * delta_4)/2 * sign * link.get_matrix1(data_conf), &src[complex_place(link_ferm)], &vec, src_index, border_sign);
                   MatVecMult(exp(-mu_q * delta_4)/2 * sign * link.get_matrix(conf.array), &px[complex_place(link_ferm)], vec, border_sign);
                   res[0] = res[0] - vec[0];
                   res[1] = res[1] - vec[1];
@@ -338,7 +447,6 @@ PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar*
                }
                py[place] = res[0] + mass*px[complex_place(link_ferm)];
                py[place + 1] = res[1] + mass*px[complex_place(link_ferm) + 1];
-               //if(place == 0) cout<<py[place]<<endl;
                res[0] = 0;
                res[1] = 0;
             }
@@ -369,11 +477,7 @@ void CheckMatMult(mat_data& my_data){
                z * 2 * x_size * y_size +
                y * 2 * x_size +
                x * 2;
-               //a = 0.1 * x + 0.2 * y + 0.4 * z + 0.5 * t + (1 + 0.6 * x + 0.7 * y + 0.8 * z + 0.9 * t) * PETSC_i;
-               //ierr = VecSetValue(vecy, place, a, INSERT_VALUES); CHKERRQ(ierr);
                vecx[place] = 0.1 * (x+1) + 0.2 * (y+1) + 0.4 * (z+1) + 0.5 * (t+1) + (1 + 0.6 * (x+1) + 0.7 * (y+1) + 0.8 * (z+1) + 0.9 * (t+1)) * PETSC_i;
-               //a = 1 + 0.1 * x + 0.2 * y + 0.4 * z + 0.5 * t + (0.6 * x + 0.7 * y + 0.8 * z + 0.9 * t) * PETSC_i;
-               //ierr = VecSetValue(vecy, place + 1, a, INSERT_VALUES); CHKERRQ(ierr);
                vecx[place+1] = 1 + 0.1 * (x+1) + 0.2 * (y+1) + 0.4 * (z+1) + 0.5 * (t+1) + (0.6 * (x+1) + 0.7 * (y+1) + 0.8 * (z+1) + 0.9 * (t+1)) * PETSC_i;
             }
          }
@@ -381,7 +485,7 @@ void CheckMatMult(mat_data& my_data){
    }
    TestMatMul(my_data, vecx, vecy);
    for(int i = 0;i < 10;i++){
-      //cout<<vecx[i]<<" "<<vecy[i]<<endl;
+      cout<<vecx[i]<<" "<<vecy[i]<<endl;
    }
    //PetscFunctionReturn(0);
 }
