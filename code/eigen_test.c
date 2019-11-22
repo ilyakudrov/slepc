@@ -57,9 +57,12 @@ int main(int argc,char **argv)
    my_data.y_size = y_size/*atof(argv[2])*/;
    my_data.z_size = z_size/*atof(argv[3])*/;
    my_data.t_size = t_size/*atof(argv[4])*/;
-   my_data.conf.read_float(/*"/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl"*/argv[1]);
+   my_data.conf.read_double(/*"/home/ilya/lattice/slepc/conf/nosmeared/time_32/mu0.00/conf_0001.fl"*/argv[1]);
+	cout<<my_data.conf.array[0].a1<<endl;
    my_data.mass = 0.0075/*atof(argv[6])*/;
    my_data.mu_q = atof(argv[2]);
+	cout<<"mu = "<<my_data.mu_q<<endl;
+	cout<<"path = "<<argv[1]<<endl;
   Mat            A;               /* operator matrix */
   EPS            eps;             /* eigenproblem solver context */
   EPSType        type;
