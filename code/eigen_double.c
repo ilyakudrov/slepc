@@ -35,9 +35,9 @@ typedef struct {
 
 void mat_set_index(PetscInt* d_nnz, PetscInt* o_nnz, int low, int high);
 void mat_insert(Mat A, int low, int high, data& conf, double mu_q, double mass);
-PetscErrorCode MatMult_eigen_sequential(Mat A,Vec x,Vec y);
-PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag);
-PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy);
+//PetscErrorCode MatMult_eigen_sequential(Mat A,Vec x,Vec y);
+//PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag);
+//PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy);
 PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar* py);
 void CheckMatMult(mat_data& my_data);
 
@@ -321,7 +321,7 @@ void MatVecMult(matrix A, const PetscScalar* x, PetscScalar* y, int border_sign)
    y[1] = border_sign * (x[0] * (-A.a2 + A.a1*PETSC_i) + x[1] * (A.a0 - A.a3*PETSC_i));
 }
 
-PetscErrorCode MatMult_eigen_sequential(Mat A,Vec vecx,Vec vecy)
+/*PetscErrorCode MatMult_eigen_sequential(Mat A,Vec vecx,Vec vecy)
 {
   mat_data              *ctx;
   int               nx,lo,i,j;
@@ -401,7 +401,7 @@ PetscErrorCode MatMult_eigen_sequential(Mat A,Vec vecx,Vec vecy)
   ierr = VecRestoreArrayRead(vecx,&px);CHKERRQ(ierr);
   ierr = VecRestoreArray(vecy,&py);CHKERRQ(ierr);
   PetscFunctionReturn(0);
-}
+}*/
 
 PetscErrorCode TestMatMul(mat_data& my_data, const PetscScalar* px, PetscScalar* py){
    int x_size = 32;
@@ -493,7 +493,7 @@ void CheckMatMult(mat_data& my_data){
    //PetscFunctionReturn(0);
 }
 
-PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy)
+/*PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy)
 {
   mat_data              *ctx;
   int x_size, y_size, z_size, t_size;
@@ -523,16 +523,16 @@ PetscErrorCode MatMult_simple(Mat A,Vec vecx,Vec vecy)
   ierr = VecRestoreArrayRead(vecx,&px);CHKERRQ(ierr);
   ierr = VecRestoreArray(vecy,&py);CHKERRQ(ierr);
   PetscFunctionReturn(0);
-}
+}*/
 
-PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag)
+/*PetscErrorCode MatGetDiagonal_Laplacian2D(Mat A,Vec diag)
 {
   PetscErrorCode ierr;
 
   PetscFunctionBeginUser;
   ierr = VecSet(diag,4.0);CHKERRQ(ierr);
   PetscFunctionReturn(0);
-}
+}*/
 
 /*TEST
 
