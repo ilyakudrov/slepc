@@ -477,9 +477,9 @@ void mat_insert(Mat A, int low, int high, data &conf, double mu_q,
 
 void MatVecMult(matrix A, const PetscScalar *x, PetscScalar *y,
                 int border_sign) {
-  y[0] = border_sign *
+  y[0] = (double)border_sign *
          (x[0] * (A.a0 + A.a3 * PETSC_i) + x[1] * (A.a2 + A.a1 * PETSC_i));
-  y[1] = border_sign *
+  y[1] = (double)border_sign *
          (x[0] * (-A.a2 + A.a1 * PETSC_i) + x[1] * (A.a0 - A.a3 * PETSC_i));
 }
 

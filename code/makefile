@@ -3,15 +3,16 @@ SRC_PATH=./
 OBJ_PATH=./obj
 
 NVCC=/usr/local/cuda-11.0/bin/nvcc
+CUDA_PATH=/usr/local/cuda-11.0
 
 include ${SLEPC_DIR}/lib/slepc/conf/slepc_common
 
 OBJFILES=$(OBJ_PATH)/link.o $(OBJ_PATH)/data.o $(OBJ_PATH)/eigen.o $(OBJ_PATH)/matrix.o
 
 FLAGS1=-Xcompiler -fPIC -Xptxas -O3  -gencode arch=compute_61,code=sm_61  -Wno-deprecated-gpu-targets -c \
---compiler-options="-I${PETSC_DIR}/include -I${PETSC_DIR}/${PETSC_ARCH}/include -I/usr/local/cuda-11.0/include    \
+--compiler-options="-I${PETSC_DIR}/include -I${PETSC_DIR}/${PETSC_ARCH}/include -I${CUDA_PATH}/include    \
 -L${SLEPC_DIR}/${PETSC_ARCH}/lib -lslepc -I${SLEPC_DIR}/include -I${SLEPC_DIR}/${PETSC_ARCH}/include \
--I${PETSC_DIR}/include -I${PETSC_DIR}/${PETSC_ARCH}/include -I/usr/local/cuda-11.0/include -fPIC -Wall \
+-I${PETSC_DIR}/include -I${PETSC_DIR}/${PETSC_ARCH}/include -I${CUDA_PATH}/include -fPIC -Wall \
 -Wwrite-strings -Wno-strict-aliasing -Wno-unknown-pragmas -fstack-protector -fvisibility=hidden -O3 -march=native -mtune=native -ffast-math  \
  -Wall -Wwrite-strings -Wno-strict-aliasing -Wno-unknown-pragmas -fstack-protector -fvisibility=hidden -O3 -march=native -mtune=native -ffast-math "
 
