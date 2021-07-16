@@ -2,8 +2,8 @@ INCLUDE_PATH=./
 SRC_PATH=./
 OBJ_PATH=./obj
 
-NVCC=/usr/local/cuda-11.0/bin/nvcc
 CUDA_PATH=/usr/local/cuda-11.0
+NVCC=${CUDA_PATH}/bin/nvcc
 
 include ${SLEPC_DIR}/lib/slepc/conf/slepc_common
 
