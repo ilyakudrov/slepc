@@ -342,7 +342,12 @@ int main(int argc, char **argv) {
     CHKERRQ(ierr);
   }
 
+  start_time = clock();
   output(output_eigenvalues, output_eigenvectors, eps, A);
+  end_time = clock();
+  search_time = end_time - start_time;
+  std::cout << "EPS solve time: " << search_time * 1. / CLOCKS_PER_SEC
+            << std::endl;
 
   ierr = EPSDestroy(&eps);
   CHKERRQ(ierr);
